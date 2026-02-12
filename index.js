@@ -9,7 +9,7 @@ const USERS_FILE = "rating.json";
 
 let session = {};
 
-console.log("Savollar soni:", questions.length);
+
 // ================== UTIL ==================
 
 function loadUsers() {
