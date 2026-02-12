@@ -66,10 +66,10 @@ bot.onText(/\/boshlash/, (msg) => {
   if (!user)
     return bot.sendMessage(chatId, "Iltimos avval /start bosing.");
 
-  if (user.exams.length >= 3) {
+  if (user.exams.length >= 5) {
     return bot.sendMessage(
       chatId,
-      `❌ Siz 3 marta imtihon topshirgansiz.\n\nAdmin: ${process.env.ADMIN_USERNAME}`
+      `❌ Siz 5 marta imtihon topshirgansiz.\n\nAdmin: ${process.env.ADMIN_USERNAME}`
     );
   }
 
