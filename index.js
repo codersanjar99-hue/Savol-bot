@@ -11,13 +11,10 @@ const MAX_MISSED = 5;
 
 let session = {};
 
-// ===== MongoDB CONNECT =====
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log("MongoDB ulandi"))
-.catch(err => console.log("Mongo xato:", err));
+// ===== MongoDB CONNECT (FIXED) =====
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB ulandi"))
+  .catch(err => console.log("Mongo xato:", err));
 
 // ===== Level =====
 function getLevel(percent) {
@@ -39,7 +36,7 @@ bot.onText(/\/start/, async (msg) => {
   }
 
   bot.sendMessage(chatId,
-`Imtihon botiga hush kelibsiz 🚀
+    `Imtihon botiga hush kelibsiz 🚀
 
 /boshlash
 /reyting
@@ -92,7 +89,7 @@ function sendQuestion(chatId) {
   };
 
   bot.sendMessage(chatId,
-`Savol ${s.index + 1}/${s.questions.length}
+    `Savol ${s.index + 1}/${s.questions.length}
 
 ${q.question}`, keyboard);
 
@@ -157,7 +154,7 @@ async function finishExam(chatId) {
   );
 
   bot.sendMessage(chatId,
-`🎉 Imtihon tugadi!
+    `🎉 Imtihon tugadi!
 
 Ball: ${s.score}
 Foiz: ${percent}%
