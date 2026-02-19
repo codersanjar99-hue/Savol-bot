@@ -149,11 +149,11 @@ module.exports = [
         options: ["A", "B", "C", "D"],
         textOptions: {
             A: "Kuchli buqalar zonasida ypoilgan Netral shami",
-            B: "Kuchsiz ayiqlar zonasida yopilgan Netral shami",
+            B: "Kuchsiz ayiqlar zonasida yopilgan Agressive shami",
             C: "Kuchsiz buqalar zonasida yopilgan Netral shami",
             D: "Kuchli buqalar zonasida yopilgan Agrissive shami"
         },
-        correct: "A"
+        correct: "B"
     },
      {
         id: 13,
@@ -166,7 +166,7 @@ module.exports = [
             C: "Kuchsiz buqalar zonasida yopilgan Netral shami",
             D: "Kuchli buqalar zonasida yopilgan Agrissive shami"
         },
-        correct: "A"
+        correct: "B"
     },
      {
         id: 14,
@@ -218,7 +218,7 @@ module.exports = [
             C: "Kuchli ayiqlar zonasida yopilgan TUSH shami",
             D: "Kuchli buqalar zonasida yopilgan TUSH shami"
         },
-        correct: "B"
+        correct: "A"
     },
      {
         id: 18,
