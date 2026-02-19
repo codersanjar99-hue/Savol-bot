@@ -8,7 +8,7 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const USERS_FILE = "rating.json";
 const MAX_EXAMS = 5;
 const MAX_MISSED = 5;
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME; // @username
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 
 let session = {};
 
@@ -32,7 +32,7 @@ function shuffle(arr) {
   return array;
 }
 
-// ================== MAIN MENU BUTTONS ==================
+// ================== MAIN MENU ==================
 
 const mainMenu = {
   reply_markup: {
@@ -67,22 +67,9 @@ bot.onText(/\/start/, (msg) => {
   );
 });
 
-// ================== BUTTONS HANDLER ==================
+// ================== IMTIHONNI BOSHLASH FUNKSIYASI ==================
 
-bot.onText(/🚀 Boshlash/, (msg) => {
-  bot.emit("text", { chat: msg.chat, text: "/boshlash" });
-});
-bot.onText(/📊 Mening natijalarim/, (msg) => {
-  bot.emit("text", { chat: msg.chat, text: "/reyting" });
-});
-bot.onText(/🏆 Reytinglar/, (msg) => {
-  bot.emit("text", { chat: msg.chat, text: "/retinglar" });
-});
-
-// ================== BOSHLASH ==================
-
-bot.onText(/\/boshlash/, (msg) => {
-  const chatId = msg.chat.id;
+function startExam(chatId) {
   let users = loadUsers();
   let user = users.find(u => u.chatId === chatId);
 
@@ -109,6 +96,26 @@ bot.onText(/\/boshlash/, (msg) => {
     };
     sendQuestion(chatId);
   }, 5000);
+}
+
+// ================== BUTTON HANDLER ==================
+
+bot.onText(/🚀 Boshlash/, (msg) => {
+  startExam(msg.chat.id);
+});
+
+bot.onText(/📊 Mening natijalarim/, (msg) => {
+  bot.emit("text", { chat: msg.chat, text: "/reyting" });
+});
+
+bot.onText(/🏆 Reytinglar/, (msg) => {
+  bot.emit("text", { chat: msg.chat, text: "/retinglar" });
+});
+
+// ================== BOSHLASH COMMAND ==================
+
+bot.onText(/\/boshlash/, (msg) => {
+  startExam(msg.chat.id);
 });
 
 // ================== SEND QUESTION ==================
@@ -158,38 +165,14 @@ function sendQuestion(chatId) {
   }, 60000);
 }
 
-// ================== CALLBACK QUERY ==================
+// ================== CALLBACK ==================
 
 bot.on("callback_query", (cb) => {
   const chatId = cb.message.chat.id;
 
   if (cb.data === "restart_exam") {
-    let users = loadUsers();
-    let user = users.find(u => u.chatId === chatId);
-
-    if (!user || user.exams.length >= MAX_EXAMS) {
-      return bot.answerCallbackQuery(cb.id, {
-        text: "Limit tugagan!",
-        show_alert: true
-      });
-    }
-
     bot.answerCallbackQuery(cb.id);
-    bot.sendMessage(chatId, "Imtihon 3 sekunddan keyin boshlanadi ⏳");
-
-    setTimeout(() => {
-      session[chatId] = {
-        index: 0,
-        score: 0,
-        questions: shuffle(questions),
-        timer: null,
-        answered: false,
-        missed: 0
-      };
-      sendQuestion(chatId);
-    }, 3000);
-
-    return;
+    return startExam(chatId);
   }
 
   const s = session[chatId];
@@ -236,14 +219,7 @@ function forceFinish(chatId) {
     `❌ Imtihon bekor qilindi!
 Siz 5 ta savolga javob bermadingiz.
 
-Qolgan imkoniyatlar: ${remaining}`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "🔁 Qaytadan boshlash", callback_data: "restart_exam" }]
-        ]
-      }
-    }
+Qolgan imkoniyatlar: ${remaining}`
   );
 
   delete session[chatId];
@@ -277,65 +253,3 @@ Qolgan imkoniyatlar: ${remaining}`
 
   delete session[chatId];
 }
-
-// ================== REYTING ==================
-
-bot.onText(/\/reyting$/, (msg) => {
-  const chatId = msg.chat.id;
-  let users = loadUsers();
-  let user = users.find(u => u.chatId === chatId);
-
-  if (!user || user.exams.length === 0)
-    return bot.sendMessage(chatId, "Siz hali imtihon topshirmagansiz.");
-
-  let text = "📊 Natijalaringiz:\n\n";
-  user.exams.forEach((e, i) => {
-    text += `${i + 1}. ${e.score} ball — ${new Date(e.date).toLocaleString()}\n`;
-  });
-
-  bot.sendMessage(chatId, text);
-});
-
-bot.onText(/\/retinglar/, (msg) => {
-  let users = loadUsers();
-  const list = users
-    .filter(u => u.exams.length > 0)
-    .map(u => ({ name: u.name, score: Math.max(...u.exams.map(e => e.score)) }))
-    .sort((a, b) => b.score - a.score);
-
-  if (list.length === 0)
-    return bot.sendMessage(msg.chat.id, "Reyting yo‘q.");
-
-  let text = "🏆 Umumiy Reyting (Eng yaxshi natija):\n\n";
-  list.forEach((u, i) => {
-    text += `${i + 1}. ${u.name} — ${u.score}\n`;
-  });
-
-  bot.sendMessage(msg.chat.id, text);
-});
-
-// ================== ADMIN: USER RESET (@username) ==================
-
-bot.onText(/\/userReset (.+)/, (msg, match) => {
-  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
-  if (chatUsername !== ADMIN_USERNAME) {
-    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
-  }
-
-  const targetName = match[1].trim();
-  let users = loadUsers();
-  let user = users.find(u => u.name.toLowerCase() === targetName.toLowerCase());
-
-  if (!user) return bot.sendMessage(msg.chat.id, "❌ Bunday user topilmadi.");
-
-  user.exams = [];
-  saveUsers(users);
-
-  bot.sendMessage(msg.chat.id,
-    `✅ ${user.name} foydalanuvchining limiti tiklandi.\nEndi u ${MAX_EXAMS} marta topshira oladi.`
-  );
-
-  bot.sendMessage(user.chatId,
-    `🎉 Admin sizning limitni tikladi!\nEndi yana ${MAX_EXAMS} marta imtihon topshira olasiz.`
-  );
-});
