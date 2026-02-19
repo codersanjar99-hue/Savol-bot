@@ -1,7 +1,6 @@
 require("dotenv").config();
 const TelegramBot = require("node-telegram-bot-api");
 const fs = require("fs");
-const path = require("path");
 const questions = require("./questions");
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
@@ -36,7 +35,6 @@ function getMainMenu(isAdmin = false) {
     ["📊 Mening natijalarim"],
     ["🏆 Reytinglar"]
   ];
-
   if (isAdmin) keyboard.push(["⚙ User Reset"]);
 
   return {
@@ -109,9 +107,7 @@ function startExam(chatId) {
   }, 5000);
 }
 
-bot.onText(/🚀 Boshlash/, (msg) => {
-  startExam(msg.chat.id);
-});
+bot.onText(/🚀 Boshlash/, (msg) => startExam(msg.chat.id));
 
 // ================= RESULTS =================
 
@@ -158,6 +154,56 @@ bot.onText(/🏆 Reytinglar/, (msg) => {
   bot.sendMessage(chatId, text);
 });
 
+// ================= USER RESET BUTTON =================
+
+bot.onText(/⚙ User Reset/, (msg) => {
+  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
+
+  if (chatUsername !== ADMIN_USERNAME) {
+    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
+  }
+
+  bot.sendMessage(
+    msg.chat.id,
+    `Qaysi foydalanuvchini reset qilmoqchisiz?\n` +
+    `Iltimos /userReset <user name> shaklida yozing.\n\n` +
+    `Masalan:\n/userReset Ali`
+  );
+});
+
+// ================= /USERRESET =================
+
+bot.onText(/\/userReset (.+)/, (msg, match) => {
+  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
+
+  if (chatUsername !== ADMIN_USERNAME) {
+    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
+  }
+
+  const targetName = match[1].trim();
+  let users = loadUsers();
+  let user = users.find(u =>
+    u.name.toLowerCase() === targetName.toLowerCase()
+  );
+
+  if (!user) {
+    return bot.sendMessage(msg.chat.id, "❌ Bunday user topilmadi.");
+  }
+
+  // 🔥 USERNING HAMMA IMTIHON NATIJALARI O‘CHIRILADI
+  user.exams = [];
+  saveUsers(users);
+
+  bot.sendMessage(msg.chat.id,
+    `✅ ${user.name} limiti va barcha reytinglari tozalandi.`
+  );
+
+  bot.sendMessage(user.chatId,
+    `🎉 Admin sizning imtihon limit va reytinglaringizni yangiladi!\n` +
+    `Endi ${MAX_EXAMS} marta imtihon topshira olasiz.`
+  );
+});
+
 // ================= SEND QUESTION =================
 
 function sendQuestion(chatId) {
@@ -178,7 +224,8 @@ function sendQuestion(chatId) {
           text: `${opt}) ${q.textOptions[opt]}`,
           callback_data: JSON.stringify({
             qId: q.id,
-            index: s.index
+            index: s.index,
+            ans: opt
           })
         }
       ]))
@@ -190,13 +237,12 @@ function sendQuestion(chatId) {
   s.timer = setTimeout(() => {
     if (!s.answered) {
       s.missed++;
-
       if (s.missed >= MAX_MISSED) {
         bot.sendMessage(chatId,
-          "⚠ 5 ta savolga javob bermadingiz. Imtihon to‘xtatildi.");
+          "⚠ 5 ta savolga javob bermadingiz. Imtihon to‘xtatildi."
+        );
         return forceFinish(chatId);
       }
-
       s.index++;
       sendQuestion(chatId);
     }
@@ -212,11 +258,8 @@ bot.on("callback_query", (cb) => {
 
   const data = JSON.parse(cb.data);
 
-  // ❗ Eski savolni bloklaymiz
-  if (data.index !== s.index) {
-    return bot.answerCallbackQuery(cb.id);
-  }
-
+  // ❗ Eski savol callbacklarini bloklaymiz
+  if (data.index !== s.index) return bot.answerCallbackQuery(cb.id);
   if (s.answered) return;
 
   s.answered = true;
@@ -224,26 +267,14 @@ bot.on("callback_query", (cb) => {
 
   const q = s.questions[s.index];
 
-  if (data.qId == q.id) {
-    const selected = cb.message.reply_markup.inline_keyboard
-      .flat()
-      .find(btn => JSON.parse(btn.callback_data).qId == q.id);
-
-    if (selected) {
-      const userAnswer = JSON.parse(cb.data);
-
-      if (userAnswer.qId == q.id) {
-        if (q.correct === userAnswer.ans) {
-          s.score++;
-          bot.sendMessage(chatId, "✔ To‘g‘ri javob!");
-        } else {
-          bot.sendMessage(
-            chatId,
-            `❌ Noto‘g‘ri!\nTo‘g‘ri javob: ${q.correct}) ${q.textOptions[q.correct]}`
-          );
-        }
-      }
-    }
+  if (q.correct === data.ans) {
+    s.score++;
+    bot.sendMessage(chatId, "✔ To‘g‘ri javob!");
+  } else {
+    bot.sendMessage(
+      chatId,
+      `❌ Noto‘g‘ri!\nTo‘g‘ri javob: ${q.correct}) ${q.textOptions[q.correct]}`
+    );
   }
 
   s.index++;
