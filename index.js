@@ -155,7 +155,7 @@ function sendQuestion(chatId) {
       s.index++;
       sendQuestion(chatId);
     }
-  }, 30000);
+  }, 60000);
 }
 
 // ================== CALLBACK QUERY ==================
