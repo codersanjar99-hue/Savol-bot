@@ -50,29 +50,27 @@ function getMainMenu(isAdmin = false) {
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  const name = msg.from.first_name;
+  const username = msg.from.username ? "@" + msg.from.username : "";
 
   let users = loadUsers();
-  let user = users.find(u => u.chatId === chatId);
+  let user = users.find(u => u.username === username);
 
   if (!user) {
     user = {
       chatId,
-      name,
-      username: msg.from.username || "",
+      name: msg.from.first_name,
+      username, // @username saqlanadi
       exams: []
     };
     users.push(user);
     saveUsers(users);
   }
 
-  const isAdmin =
-    msg.from.username &&
-    `@${msg.from.username}` === ADMIN_USERNAME;
+  const isAdmin = username === ADMIN_USERNAME;
 
   bot.sendMessage(
     chatId,
-    `Assalom alaykum ${name}!\n\nImtihon botiga hush kelibsiz 🚀`,
+    `Assalom alaykum ${msg.from.first_name}!\n\nImtihon botiga hush kelibsiz 🚀`,
     getMainMenu(isAdmin)
   );
 });
@@ -86,10 +84,7 @@ function startExam(chatId) {
   if (!user) return bot.sendMessage(chatId, "Avval /start bosing.");
 
   if (user.exams.length >= MAX_EXAMS) {
-    return bot.sendMessage(
-      chatId,
-      `❌ Siz ${MAX_EXAMS} marta topshirgansiz.`
-    );
+    return bot.sendMessage(chatId, `❌ Siz ${MAX_EXAMS} marta topshirgansiz.`);
   }
 
   bot.sendMessage(chatId, "Imtihon 5 sekunddan keyin boshlanadi ⏳");
@@ -114,15 +109,16 @@ bot.onText(/🚀 Boshlash/, (msg) => startExam(msg.chat.id));
 
 bot.onText(/📊 Mening natijalarim/, (msg) => {
   const chatId = msg.chat.id;
+  const username = msg.from.username ? "@" + msg.from.username : "";
+
   let users = loadUsers();
-  let user = users.find(u => u.chatId === chatId);
+  let user = users.find(u => u.username === username);
 
   if (!user || user.exams.length === 0) {
     return bot.sendMessage(chatId, "❌ Siz hali imtihon topshirmagansiz.");
   }
 
   let text = "📊 Natijalar:\n\n";
-
   user.exams.forEach((e, i) => {
     text += `${i + 1}) Ball: ${e.score} (${e.forced ? "To‘xtatilgan" : "Tugagan"})\n`;
   });
@@ -149,35 +145,31 @@ bot.onText(/🏆 Reytinglar/, (msg) => {
 
   users.slice(0, 10).forEach((u, i) => {
     const best = Math.max(...u.exams.map(e => e.score), 0);
-    text += `${i + 1}) ${u.name} — ${best}\n`;
+    text += `${i + 1}) ${u.username} — ${best}\n`;
   });
 
   bot.sendMessage(chatId, text);
 });
 
-// ================= USER RESET BUTTON =================
+// ================= USER RESET =================
 
 bot.onText(/⚙ User Reset/, (msg) => {
-  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
-
-  if (chatUsername !== ADMIN_USERNAME) {
-    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
-  }
+  const username = msg.from.username ? "@" + msg.from.username : "";
+  if (username !== ADMIN_USERNAME) return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
 
   awaitingReset = true;
-  bot.sendMessage(msg.chat.id, "Iltimos, reset qilmoqchi bo‘lgan userning **username**ini yuboring (masalan: @Ali)");
+  bot.sendMessage(msg.chat.id, "Iltimos, reset qilmoqchi bo‘lgan userning **@username**ini yuboring (masalan: @Ali)");
 });
 
-// ================= ADMIN USERNAME QABUL QILISH =================
+// ================= ADMIN USERNAME QABUL =================
 
 bot.on("message", (msg) => {
-  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
-
-  if (!awaitingReset || chatUsername !== ADMIN_USERNAME) return;
+  const username = msg.from.username ? "@" + msg.from.username : "";
+  if (!awaitingReset || username !== ADMIN_USERNAME) return;
 
   const targetUsername = msg.text.trim();
   let users = loadUsers();
-  let user = users.find(u => `@${u.username}` === targetUsername);
+  let user = users.find(u => u.username === targetUsername);
 
   if (!user) {
     bot.sendMessage(msg.chat.id, "❌ Bunday user topilmadi.");
@@ -189,13 +181,8 @@ bot.on("message", (msg) => {
   user.exams = [];
   saveUsers(users);
 
-  bot.sendMessage(msg.chat.id,
-    `✅ ${user.name} (username: ${targetUsername}) limit va reytinglari tozalandi.`
-  );
-
-  bot.sendMessage(user.chatId,
-    `🎉 Admin sizning imtihon limit va reytinglaringizni yangiladi!\nEndi siz ${MAX_EXAMS} marta imtihon topshira olasiz.`
-  );
+  bot.sendMessage(msg.chat.id, `✅ ${targetUsername} limit va reytinglari tozalandi.`);
+  bot.sendMessage(user.chatId, `🎉 Admin sizning imtihon limit va reytinglaringizni yangiladi!\nEndi siz ${MAX_EXAMS} marta imtihon topshira olasiz.`);
 
   awaitingReset = false;
 });
@@ -274,10 +261,7 @@ bot.on("callback_query", (cb) => {
     s.score++;
     bot.sendMessage(chatId, "✔ To‘g‘ri javob!");
   } else {
-    bot.sendMessage(
-      chatId,
-      `❌ Noto‘g‘ri!\nTo‘g‘ri javob: ${q.correct}) ${q.textOptions[q.correct]}`
-    );
+    bot.sendMessage(chatId, `❌ Noto‘g‘ri!\nTo‘g‘ri javob: ${q.correct}) ${q.textOptions[q.correct]}`);
   }
 
   s.index++;
@@ -305,9 +289,7 @@ function finishExam(chatId) {
 
   const percent = Math.round((s.score / s.questions.length) * 100);
 
-  bot.sendMessage(chatId,
-    `🎉 Imtihon tugadi!\n\nBall: ${s.score}/${s.questions.length}\nFoiz: ${percent}%`
-  );
+  bot.sendMessage(chatId, `🎉 Imtihon tugadi!\n\nBall: ${s.score}/${s.questions.length}\nFoiz: ${percent}%`);
 
   delete session[chatId];
 }
