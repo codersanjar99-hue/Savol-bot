@@ -5,6 +5,7 @@ const path = require("path");
 const questions = require("./questions");
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+
 const USERS_FILE = "rating.json";
 const MAX_EXAMS = 5;
 const MAX_MISSED = 5;
@@ -12,7 +13,7 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 
 let session = {};
 
-// ================== UTIL ==================
+// ================= UTIL =================
 
 function loadUsers() {
   if (!fs.existsSync(USERS_FILE)) return [];
@@ -24,15 +25,10 @@ function saveUsers(data) {
 }
 
 function shuffle(arr) {
-  let array = [...arr];
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
+  return [...arr].sort(() => Math.random() - 0.5);
 }
 
-// ================== MENU (ADMIN CHECK) ==================
+// ================= MENU =================
 
 function getMainMenu(isAdmin = false) {
   const keyboard = [
@@ -41,9 +37,7 @@ function getMainMenu(isAdmin = false) {
     ["🏆 Reytinglar"]
   ];
 
-  if (isAdmin) {
-    keyboard.push(["⚙ User Reset"]);
-  }
+  if (isAdmin) keyboard.push(["⚙ User Reset"]);
 
   return {
     reply_markup: {
@@ -53,7 +47,7 @@ function getMainMenu(isAdmin = false) {
   };
 }
 
-// ================== START ==================
+// ================= START =================
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -63,7 +57,12 @@ bot.onText(/\/start/, (msg) => {
   let user = users.find(u => u.chatId === chatId);
 
   if (!user) {
-    user = { chatId, name, exams: [], username: msg.from.username || "" };
+    user = {
+      chatId,
+      name,
+      username: msg.from.username || "",
+      exams: []
+    };
     users.push(user);
     saveUsers(users);
   }
@@ -79,19 +78,18 @@ bot.onText(/\/start/, (msg) => {
   );
 });
 
-// ================== START EXAM FUNCTION ==================
+// ================= START EXAM =================
 
 function startExam(chatId) {
   let users = loadUsers();
   let user = users.find(u => u.chatId === chatId);
 
-  if (!user)
-    return bot.sendMessage(chatId, "Iltimos avval /start bosing.");
+  if (!user) return bot.sendMessage(chatId, "Avval /start bosing.");
 
   if (user.exams.length >= MAX_EXAMS) {
     return bot.sendMessage(
       chatId,
-      `❌ Siz ${MAX_EXAMS} marta imtihon topshirgansiz.\nAdmin: ${ADMIN_USERNAME}`
+      `❌ Siz ${MAX_EXAMS} marta topshirgansiz.\nAdmin: ${ADMIN_USERNAME}`
     );
   }
 
@@ -106,38 +104,61 @@ function startExam(chatId) {
       answered: false,
       missed: 0
     };
+
     sendQuestion(chatId);
   }, 5000);
 }
-
-// ================== BUTTON HANDLERS ==================
 
 bot.onText(/🚀 Boshlash/, (msg) => {
   startExam(msg.chat.id);
 });
 
+// ================= RESULTS =================
+
 bot.onText(/📊 Mening natijalarim/, (msg) => {
-  bot.emit("text", { chat: msg.chat, text: "/reyting" });
-});
+  const chatId = msg.chat.id;
+  let users = loadUsers();
+  let user = users.find(u => u.chatId === chatId);
 
-bot.onText(/🏆 Reytinglar/, (msg) => {
-  bot.emit("text", { chat: msg.chat, text: "/retinglar" });
-});
-
-bot.onText(/⚙ User Reset/, (msg) => {
-  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
-
-  if (chatUsername !== ADMIN_USERNAME) {
-    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
+  if (!user || user.exams.length === 0) {
+    return bot.sendMessage(chatId, "❌ Siz hali imtihon topshirmagansiz.");
   }
 
-  bot.sendMessage(
-    msg.chat.id,
-    "Qaysi foydalanuvchini reset qilmoqchisiz?\n\nMasalan:\n/userReset Ali"
-  );
+  let text = "📊 Natijalar:\n\n";
+
+  user.exams.forEach((e, i) => {
+    text += `${i + 1}) Ball: ${e.score} (${e.forced ? "To‘xtatilgan" : "Tugagan"})\n`;
+  });
+
+  bot.sendMessage(chatId, text);
 });
 
-// ================== SEND QUESTION ==================
+// ================= RATING =================
+
+bot.onText(/🏆 Reytinglar/, (msg) => {
+  const chatId = msg.chat.id;
+  let users = loadUsers();
+
+  if (users.length === 0)
+    return bot.sendMessage(chatId, "Reyting mavjud emas.");
+
+  users.sort((a, b) => {
+    const aBest = Math.max(...a.exams.map(e => e.score), 0);
+    const bBest = Math.max(...b.exams.map(e => e.score), 0);
+    return bBest - aBest;
+  });
+
+  let text = "🏆 Top 10 Reyting:\n\n";
+
+  users.slice(0, 10).forEach((u, i) => {
+    const best = Math.max(...u.exams.map(e => e.score), 0);
+    text += `${i + 1}) ${u.name} — ${best}\n`;
+  });
+
+  bot.sendMessage(chatId, text);
+});
+
+// ================= SEND QUESTION =================
 
 function sendQuestion(chatId) {
   const s = session[chatId];
@@ -146,72 +167,83 @@ function sendQuestion(chatId) {
   if (s.index >= s.questions.length) return finishExam(chatId);
 
   s.answered = false;
+
   const q = s.questions[s.index];
   const progress = `Savol ${s.index + 1}/${s.questions.length}\n\n`;
 
-  // ✅ JAVOBLAR VERTIKAL
   const keyboard = {
     reply_markup: {
       inline_keyboard: q.options.map(opt => ([
         {
           text: `${opt}) ${q.textOptions[opt]}`,
-          callback_data: JSON.stringify({ qId: q.id, ans: opt })
+          callback_data: JSON.stringify({
+            qId: q.id,
+            index: s.index
+          })
         }
       ]))
     }
   };
 
-  if (q.image && fs.existsSync(q.image)) {
-    bot.sendPhoto(chatId, path.resolve(q.image), {
-      caption: progress + q.question,
-      ...keyboard
-    });
-  } else {
-    bot.sendMessage(chatId, progress + q.question, keyboard);
-  }
+  bot.sendMessage(chatId, progress + q.question, keyboard);
 
   s.timer = setTimeout(() => {
     if (!s.answered) {
       s.missed++;
+
       if (s.missed >= MAX_MISSED) {
         bot.sendMessage(chatId,
-          "⚠ Siz 5 ta savolga javob bermadingiz!\nImtihon to‘xtatildi.");
+          "⚠ 5 ta savolga javob bermadingiz. Imtihon to‘xtatildi.");
         return forceFinish(chatId);
       }
-      bot.sendMessage(chatId, "⏳ Vaqt tugadi!");
+
       s.index++;
       sendQuestion(chatId);
     }
   }, 60000);
 }
 
-// ================== CALLBACK ==================
+// ================= CALLBACK =================
 
 bot.on("callback_query", (cb) => {
   const chatId = cb.message.chat.id;
+  const s = session[chatId];
+  if (!s) return;
 
-  if (cb.data === "restart_exam") {
-    bot.answerCallbackQuery(cb.id);
-    return startExam(chatId);
+  const data = JSON.parse(cb.data);
+
+  // ❗ Eski savolni bloklaymiz
+  if (data.index !== s.index) {
+    return bot.answerCallbackQuery(cb.id);
   }
 
-  const s = session[chatId];
-  if (!s || s.answered) return;
+  if (s.answered) return;
 
   s.answered = true;
   if (s.timer) clearTimeout(s.timer);
 
-  const data = JSON.parse(cb.data);
-  const q = s.questions.find(x => x.id == data.qId);
-  if (!q) return;
+  const q = s.questions[s.index];
 
-  if (data.ans === q.correct) {
-    s.score++;
-    bot.sendMessage(chatId, "✔ To‘g‘ri javob!");
-  } else {
-    bot.sendMessage(chatId,
-      `❌ Noto‘g‘ri!\nTo‘g‘ri javob: ${q.correct}) ${q.textOptions[q.correct]}`
-    );
+  if (data.qId == q.id) {
+    const selected = cb.message.reply_markup.inline_keyboard
+      .flat()
+      .find(btn => JSON.parse(btn.callback_data).qId == q.id);
+
+    if (selected) {
+      const userAnswer = JSON.parse(cb.data);
+
+      if (userAnswer.qId == q.id) {
+        if (q.correct === userAnswer.ans) {
+          s.score++;
+          bot.sendMessage(chatId, "✔ To‘g‘ri javob!");
+        } else {
+          bot.sendMessage(
+            chatId,
+            `❌ Noto‘g‘ri!\nTo‘g‘ri javob: ${q.correct}) ${q.textOptions[q.correct]}`
+          );
+        }
+      }
+    }
   }
 
   s.index++;
@@ -219,22 +251,7 @@ bot.on("callback_query", (cb) => {
   sendQuestion(chatId);
 });
 
-// ================== FINISH / FORCE ==================
-
-function forceFinish(chatId) {
-  const s = session[chatId];
-  if (!s) return;
-  if (s.timer) clearTimeout(s.timer);
-
-  let users = loadUsers();
-  let user = users.find(u => u.chatId === chatId);
-  if (!user) return;
-
-  user.exams.push({ score: s.score, date: new Date().toISOString(), forced: true });
-  saveUsers(users);
-
-  delete session[chatId];
-}
+// ================= FINISH =================
 
 function finishExam(chatId) {
   const s = session[chatId];
@@ -245,50 +262,42 @@ function finishExam(chatId) {
   let user = users.find(u => u.chatId === chatId);
   if (!user) return;
 
-  user.exams.push({ score: s.score, date: new Date().toISOString() });
+  user.exams.push({
+    score: s.score,
+    date: new Date().toISOString()
+  });
+
   saveUsers(users);
 
-  const remaining = MAX_EXAMS - user.exams.length;
   const percent = Math.round((s.score / s.questions.length) * 100);
 
   bot.sendMessage(chatId,
     `🎉 Imtihon tugadi!
 
 Ball: ${s.score}/${s.questions.length}
-Foiz: ${percent}%
-
-Qolgan imkoniyatlar: ${remaining}`
+Foiz: ${percent}%`
   );
 
   delete session[chatId];
 }
 
-// ================== USER RESET COMMAND ==================
+// ================= FORCE FINISH =================
 
-bot.onText(/\/userReset (.+)/, (msg, match) => {
-  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
+function forceFinish(chatId) {
+  const s = session[chatId];
+  if (!s) return;
+  if (s.timer) clearTimeout(s.timer);
 
-  if (chatUsername !== ADMIN_USERNAME) {
-    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
-  }
-
-  const targetName = match[1].trim();
   let users = loadUsers();
-  let user = users.find(u =>
-    u.name.toLowerCase() === targetName.toLowerCase()
-  );
+  let user = users.find(u => u.chatId === chatId);
+  if (!user) return;
 
-  if (!user)
-    return bot.sendMessage(msg.chat.id, "❌ Bunday user topilmadi.");
+  user.exams.push({
+    score: s.score,
+    date: new Date().toISOString(),
+    forced: true
+  });
 
-  user.exams = [];
   saveUsers(users);
-
-  bot.sendMessage(msg.chat.id,
-    `✅ ${user.name} limiti tiklandi.`
-  );
-
-  bot.sendMessage(user.chatId,
-    `🎉 Admin sizning limitni tikladi!\nEndi ${MAX_EXAMS} marta topshira olasiz.`
-  );
-});
+  delete session[chatId];
+}
