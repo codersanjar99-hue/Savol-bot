@@ -32,18 +32,26 @@ function shuffle(arr) {
   return array;
 }
 
-// ================== MAIN MENU ==================
+// ================== MENU (ADMIN CHECK) ==================
 
-const mainMenu = {
-  reply_markup: {
-    keyboard: [
-      ["🚀 Boshlash"],
-      ["📊 Mening natijalarim"],
-      ["🏆 Reytinglar"]
-    ],
-    resize_keyboard: true
+function getMainMenu(isAdmin = false) {
+  const keyboard = [
+    ["🚀 Boshlash"],
+    ["📊 Mening natijalarim"],
+    ["🏆 Reytinglar"]
+  ];
+
+  if (isAdmin) {
+    keyboard.push(["⚙ User Reset"]);
   }
-};
+
+  return {
+    reply_markup: {
+      keyboard,
+      resize_keyboard: true
+    }
+  };
+}
 
 // ================== START ==================
 
@@ -60,14 +68,18 @@ bot.onText(/\/start/, (msg) => {
     saveUsers(users);
   }
 
+  const isAdmin =
+    msg.from.username &&
+    `@${msg.from.username}` === ADMIN_USERNAME;
+
   bot.sendMessage(
     chatId,
     `Assalom alaykum ${name}!\n\nImtihon botiga hush kelibsiz 🚀`,
-    mainMenu
+    getMainMenu(isAdmin)
   );
 });
 
-// ================== IMTIHONNI BOSHLASH FUNKSIYASI ==================
+// ================== START EXAM FUNCTION ==================
 
 function startExam(chatId) {
   let users = loadUsers();
@@ -98,7 +110,7 @@ function startExam(chatId) {
   }, 5000);
 }
 
-// ================== BUTTON HANDLER ==================
+// ================== BUTTON HANDLERS ==================
 
 bot.onText(/🚀 Boshlash/, (msg) => {
   startExam(msg.chat.id);
@@ -112,10 +124,17 @@ bot.onText(/🏆 Reytinglar/, (msg) => {
   bot.emit("text", { chat: msg.chat, text: "/retinglar" });
 });
 
-// ================== BOSHLASH COMMAND ==================
+bot.onText(/⚙ User Reset/, (msg) => {
+  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
 
-bot.onText(/\/boshlash/, (msg) => {
-  startExam(msg.chat.id);
+  if (chatUsername !== ADMIN_USERNAME) {
+    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
+  }
+
+  bot.sendMessage(
+    msg.chat.id,
+    "Qaysi foydalanuvchini reset qilmoqchisiz?\n\nMasalan:\n/userReset Ali"
+  );
 });
 
 // ================== SEND QUESTION ==================
@@ -130,14 +149,15 @@ function sendQuestion(chatId) {
   const q = s.questions[s.index];
   const progress = `Savol ${s.index + 1}/${s.questions.length}\n\n`;
 
+  // ✅ JAVOBLAR VERTIKAL
   const keyboard = {
     reply_markup: {
-      inline_keyboard: [
-        q.options.map(opt => ({
+      inline_keyboard: q.options.map(opt => ([
+        {
           text: `${opt}) ${q.textOptions[opt]}`,
           callback_data: JSON.stringify({ qId: q.id, ans: opt })
-        }))
-      ]
+        }
+      ]))
     }
   };
 
@@ -199,7 +219,7 @@ bot.on("callback_query", (cb) => {
   sendQuestion(chatId);
 });
 
-// ================== FORCE FINISH ==================
+// ================== FINISH / FORCE ==================
 
 function forceFinish(chatId) {
   const s = session[chatId];
@@ -213,19 +233,8 @@ function forceFinish(chatId) {
   user.exams.push({ score: s.score, date: new Date().toISOString(), forced: true });
   saveUsers(users);
 
-  const remaining = MAX_EXAMS - user.exams.length;
-
-  bot.sendMessage(chatId,
-    `❌ Imtihon bekor qilindi!
-Siz 5 ta savolga javob bermadingiz.
-
-Qolgan imkoniyatlar: ${remaining}`
-  );
-
   delete session[chatId];
 }
-
-// ================== FINISH ==================
 
 function finishExam(chatId) {
   const s = session[chatId];
@@ -253,3 +262,33 @@ Qolgan imkoniyatlar: ${remaining}`
 
   delete session[chatId];
 }
+
+// ================== USER RESET COMMAND ==================
+
+bot.onText(/\/userReset (.+)/, (msg, match) => {
+  const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
+
+  if (chatUsername !== ADMIN_USERNAME) {
+    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
+  }
+
+  const targetName = match[1].trim();
+  let users = loadUsers();
+  let user = users.find(u =>
+    u.name.toLowerCase() === targetName.toLowerCase()
+  );
+
+  if (!user)
+    return bot.sendMessage(msg.chat.id, "❌ Bunday user topilmadi.");
+
+  user.exams = [];
+  saveUsers(users);
+
+  bot.sendMessage(msg.chat.id,
+    `✅ ${user.name} limiti tiklandi.`
+  );
+
+  bot.sendMessage(user.chatId,
+    `🎉 Admin sizning limitni tikladi!\nEndi ${MAX_EXAMS} marta topshira olasiz.`
+  );
+});
