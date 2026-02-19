@@ -11,6 +11,7 @@ const MAX_MISSED = 5;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 
 let session = {};
+let awaitingReset = false; // Admindan username kutilmoqda
 
 // ================= UTIL =================
 
@@ -87,7 +88,7 @@ function startExam(chatId) {
   if (user.exams.length >= MAX_EXAMS) {
     return bot.sendMessage(
       chatId,
-      `❌ Siz ${MAX_EXAMS} marta topshirgansiz.\nAdmin: ${ADMIN_USERNAME}`
+      `❌ Siz ${MAX_EXAMS} marta topshirgansiz.`
     );
   }
 
@@ -163,45 +164,40 @@ bot.onText(/⚙ User Reset/, (msg) => {
     return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
   }
 
-  bot.sendMessage(
-    msg.chat.id,
-    `Qaysi foydalanuvchini reset qilmoqchisiz?\n` +
-    `Iltimos /userReset <user name> shaklida yozing.\n\n` +
-    `Masalan:\n/userReset Ali`
-  );
+  awaitingReset = true;
+  bot.sendMessage(msg.chat.id, "Iltimos, reset qilmoqchi bo‘lgan userning **username**ini yuboring (masalan: @Ali)");
 });
 
-// ================= /USERRESET =================
+// ================= ADMIN USERNAME QABUL QILISH =================
 
-bot.onText(/\/userReset (.+)/, (msg, match) => {
+bot.on("message", (msg) => {
   const chatUsername = msg.from.username ? `@${msg.from.username}` : "";
 
-  if (chatUsername !== ADMIN_USERNAME) {
-    return bot.sendMessage(msg.chat.id, "❌ Siz admin emassiz.");
-  }
+  if (!awaitingReset || chatUsername !== ADMIN_USERNAME) return;
 
-  const targetName = match[1].trim();
+  const targetUsername = msg.text.trim();
   let users = loadUsers();
-  let user = users.find(u =>
-    u.name.toLowerCase() === targetName.toLowerCase()
-  );
+  let user = users.find(u => `@${u.username}` === targetUsername);
 
   if (!user) {
-    return bot.sendMessage(msg.chat.id, "❌ Bunday user topilmadi.");
+    bot.sendMessage(msg.chat.id, "❌ Bunday user topilmadi.");
+    awaitingReset = false;
+    return;
   }
 
-  // 🔥 USERNING HAMMA IMTIHON NATIJALARI O‘CHIRILADI
+  // Userning imtihonlarini o'chirish
   user.exams = [];
   saveUsers(users);
 
   bot.sendMessage(msg.chat.id,
-    `✅ ${user.name} limiti va barcha reytinglari tozalandi.`
+    `✅ ${user.name} (username: ${targetUsername}) limit va reytinglari tozalandi.`
   );
 
   bot.sendMessage(user.chatId,
-    `🎉 Admin sizning imtihon limit va reytinglaringizni yangiladi!\n` +
-    `Endi ${MAX_EXAMS} marta imtihon topshira olasiz.`
+    `🎉 Admin sizning imtihon limit va reytinglaringizni yangiladi!\nEndi siz ${MAX_EXAMS} marta imtihon topshira olasiz.`
   );
+
+  awaitingReset = false;
 });
 
 // ================= SEND QUESTION =================
@@ -209,11 +205,9 @@ bot.onText(/\/userReset (.+)/, (msg, match) => {
 function sendQuestion(chatId) {
   const s = session[chatId];
   if (!s) return;
-
   if (s.index >= s.questions.length) return finishExam(chatId);
 
   s.answered = false;
-
   const q = s.questions[s.index];
   const progress = `Savol ${s.index + 1}/${s.questions.length}\n\n`;
 
@@ -232,15 +226,25 @@ function sendQuestion(chatId) {
     }
   };
 
-  bot.sendMessage(chatId, progress + q.question, keyboard);
+  // Rasm bilan yuborish
+  if (q.image) {
+    const photo = q.image.startsWith("http")
+      ? q.image
+      : fs.readFileSync(__dirname + "/" + q.image);
+
+    bot.sendPhoto(chatId, photo, {
+      caption: progress + q.question,
+      reply_markup: keyboard.reply_markup
+    });
+  } else {
+    bot.sendMessage(chatId, progress + q.question, keyboard);
+  }
 
   s.timer = setTimeout(() => {
     if (!s.answered) {
       s.missed++;
       if (s.missed >= MAX_MISSED) {
-        bot.sendMessage(chatId,
-          "⚠ 5 ta savolga javob bermadingiz. Imtihon to‘xtatildi."
-        );
+        bot.sendMessage(chatId, "⚠ 5 ta savolga javob bermadingiz. Imtihon to‘xtatildi.");
         return forceFinish(chatId);
       }
       s.index++;
@@ -258,7 +262,6 @@ bot.on("callback_query", (cb) => {
 
   const data = JSON.parse(cb.data);
 
-  // ❗ Eski savol callbacklarini bloklaymiz
   if (data.index !== s.index) return bot.answerCallbackQuery(cb.id);
   if (s.answered) return;
 
@@ -303,10 +306,7 @@ function finishExam(chatId) {
   const percent = Math.round((s.score / s.questions.length) * 100);
 
   bot.sendMessage(chatId,
-    `🎉 Imtihon tugadi!
-
-Ball: ${s.score}/${s.questions.length}
-Foiz: ${percent}%`
+    `🎉 Imtihon tugadi!\n\nBall: ${s.score}/${s.questions.length}\nFoiz: ${percent}%`
   );
 
   delete session[chatId];
