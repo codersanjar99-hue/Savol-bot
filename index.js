@@ -8,14 +8,16 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
 const MAX_EXAMS = 3;
 const MAX_MISSED = 5;
-const ADMIN = process.env.ADMIN_USERNAME;
 
 let session = {};
 
 // ===== MongoDB CONNECT =====
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB ulandi"))
-  .catch(err => console.log(err));
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log("MongoDB ulandi"))
+.catch(err => console.log("Mongo xato:", err));
 
 // ===== Level =====
 function getLevel(percent) {
@@ -37,7 +39,7 @@ bot.onText(/\/start/, async (msg) => {
   }
 
   bot.sendMessage(chatId,
-    `Imtihon botiga hush kelibsiz 🚀
+`Imtihon botiga hush kelibsiz 🚀
 
 /boshlash
 /reyting
@@ -59,7 +61,7 @@ bot.onText(/\/boshlash/, async (msg) => {
   session[chatId] = {
     index: 0,
     score: 0,
-    questions: questions.sort(() => Math.random() - 0.5),
+    questions: [...questions].sort(() => Math.random() - 0.5),
     missed: 0,
     answered: false
   };
@@ -90,7 +92,7 @@ function sendQuestion(chatId) {
   };
 
   bot.sendMessage(chatId,
-    `Savol ${s.index + 1}/${s.questions.length}
+`Savol ${s.index + 1}/${s.questions.length}
 
 ${q.question}`, keyboard);
 
@@ -99,6 +101,7 @@ ${q.question}`, keyboard);
       s.missed++;
       if (s.missed >= MAX_MISSED)
         return forceFinish(chatId);
+
       s.index++;
       sendQuestion(chatId);
     }
@@ -117,7 +120,14 @@ bot.on("callback_query", async (cb) => {
   const [qId, ans] = cb.data.split("_");
   const q = s.questions.find(x => x.id == qId);
 
-  if (ans === q.correct) s.score++;
+  if (ans === q.correct) {
+    s.score++;
+    bot.sendMessage(chatId, "✔ To‘g‘ri");
+  } else {
+    bot.sendMessage(chatId,
+      `❌ Noto‘g‘ri
+To‘g‘ri javob: ${q.correct}) ${q.textOptions[q.correct]}`);
+  }
 
   s.index++;
   sendQuestion(chatId);
@@ -147,7 +157,7 @@ async function finishExam(chatId) {
   );
 
   bot.sendMessage(chatId,
-    `🎉 Tugadi!
+`🎉 Imtihon tugadi!
 
 Ball: ${s.score}
 Foiz: ${percent}%
@@ -178,7 +188,7 @@ bot.onText(/\/reyting$/, async (msg) => {
   bot.sendMessage(msg.chat.id, text);
 });
 
-// ===== GLOBAL =====
+// ===== GLOBAL REYTING =====
 bot.onText(/\/retinglar/, async (msg) => {
   const users = await User.find({ "exams.0": { $exists: true } });
 
